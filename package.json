@@ -1,0 +1,42 @@
+{
+  "name": "notion-x-bookmarks-sync",
+  "version": "0.1.0",
+  "description": "Sync your X (Twitter) bookmarks into a Notion database, with author, type, and full tweet text on every page.",
+  "type": "module",
+  "main": "dist/index.js",
+  "license": "MIT",
+  "author": "Andrew Krippner",
+  "homepage": "https://github.com/andrewkrippner/notion-x-bookmarks-sync#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andrewkrippner/notion-x-bookmarks-sync.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andrewkrippner/notion-x-bookmarks-sync/issues"
+  },
+  "keywords": [
+    "notion",
+    "x",
+    "twitter",
+    "bookmarks",
+    "notion-worker",
+    "notion-sync"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "oauth": "node scripts/x-oauth.mjs",
+    "worktree:setup": "bash worktree-setup.sh",
+    "worktree:archive": "bash worktree-archive.sh"
+  },
+  "dependencies": {
+    "@notionhq/workers": "^0.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

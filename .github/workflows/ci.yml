@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+  deploy:
+    needs: check
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Setup Notion CLI
+        uses: andrewkrippner/setup-ntn@v1
+        with:
+          notion_api_token: ${{ secrets.NOTION_API_TOKEN }}
+
+      - name: Check workers.json is committed
+        run: |
+          if [ ! -f workers.json ]; then
+            echo "::error::workers.json is missing. This is a one-time local bootstrap step."
+            echo "::error::See README → 'First-time setup' for instructions."
+            exit 1
+          fi
+
+      - name: Configure worker env
+        env:
+          X_CLIENT_ID: ${{ secrets.X_CLIENT_ID }}
+          X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
+          X_REFRESH_TOKEN: ${{ secrets.X_REFRESH_TOKEN }}
+          TIMEZONE: ${{ vars.TIMEZONE }}
+        run: |
+          ntn workers env set X_CLIENT_ID="$X_CLIENT_ID"
+          ntn workers env set X_CLIENT_SECRET="$X_CLIENT_SECRET"
+          ntn workers env set TIMEZONE="$TIMEZONE"
+          # X_REFRESH_TOKEN is only the one-time bootstrap token. After the first
+          # run the worker stores the rotated refresh token in its own sync state
+          # and ignores this env var, so we only set it when it's provided.
+          if [ -n "$X_REFRESH_TOKEN" ]; then
+            ntn workers env set X_REFRESH_TOKEN="$X_REFRESH_TOKEN"
+          fi
+
+      - name: Deploy worker
+        env:
+          SYNC_SCHEDULE: ${{ vars.SYNC_SCHEDULE }}
+        run: ntn workers deploy
