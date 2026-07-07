@@ -8,7 +8,7 @@ set -e
 #   3. Installs dependencies
 #
 # Flags:
-#   --skip-install  Skip `npm install`
+#   --skip-install  Skip `pnpm install`
 
 SKIP_INSTALL=0
 for arg in "$@"; do
@@ -56,7 +56,7 @@ echo "Node $(node -v)"
 if [ "$SKIP_INSTALL" -eq 0 ]; then
     echo ""
     echo "Installing dependencies..."
-    npm install
+    pnpm install
 fi
 
 echo ""

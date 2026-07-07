@@ -6,7 +6,7 @@
 // the worker needs. Zero dependencies — uses only Node built-ins.
 //
 // Usage:
-//   X_CLIENT_ID=... [X_CLIENT_SECRET=...] npm run oauth
+//   X_CLIENT_ID=... [X_CLIENT_SECRET=...] pnpm oauth
 //
 // Prerequisite: in your X app's "User authentication settings", set the
 // callback URI to exactly:   http://localhost:8080/callback
@@ -28,7 +28,7 @@ const TOKEN_URL = "https://api.x.com/2/oauth2/token";
 
 if (!CLIENT_ID) {
   console.error("Error: X_CLIENT_ID is required.");
-  console.error("Usage: X_CLIENT_ID=... [X_CLIENT_SECRET=...] npm run oauth");
+  console.error("Usage: X_CLIENT_ID=... [X_CLIENT_SECRET=...] pnpm oauth");
   process.exit(1);
 }
 

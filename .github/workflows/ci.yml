@@ -11,18 +11,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: npm run check
+        run: pnpm check
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
   deploy:
     needs: check
@@ -31,14 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
-      - run: npm run build
+      - run: pnpm build
 
       - name: Setup Notion CLI
         uses: andrewkrippner/setup-ntn@v1
@@ -59,10 +63,16 @@ jobs:
           X_CLIENT_SECRET: ${{ secrets.X_CLIENT_SECRET }}
           X_REFRESH_TOKEN: ${{ secrets.X_REFRESH_TOKEN }}
           TIMEZONE: ${{ vars.TIMEZONE }}
+          X_FULL_LOAD_LIMIT: ${{ vars.X_FULL_LOAD_LIMIT }}
         run: |
           ntn workers env set X_CLIENT_ID="$X_CLIENT_ID"
           ntn workers env set X_CLIENT_SECRET="$X_CLIENT_SECRET"
           ntn workers env set TIMEZONE="$TIMEZONE"
+          # Only set X_FULL_LOAD_LIMIT when the variable is provided — an empty
+          # value would parse to 0, which the worker reads as "no cap".
+          if [ -n "$X_FULL_LOAD_LIMIT" ]; then
+            ntn workers env set X_FULL_LOAD_LIMIT="$X_FULL_LOAD_LIMIT"
+          fi
           # X_REFRESH_TOKEN is only the one-time bootstrap token. After the first
           # run the worker stores the rotated refresh token in its own sync state
           # and ignores this env var, so we only set it when it's provided.

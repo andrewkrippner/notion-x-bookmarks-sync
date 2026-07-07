@@ -14,13 +14,18 @@ const worker = new Worker();
 
 const TIMEZONE = process.env.TIMEZONE ?? "America/Los_Angeles";
 
+// Cap the first (backlog) load so a large bookmark history doesn't page forever.
+// Steady-state cycles stop at the last-synced marker well before this. Set to 0
+// to disable the cap and always walk the full history.
+const FULL_LOAD_LIMIT = Number(process.env.X_FULL_LOAD_LIMIT ?? "800");
+
 // ---------------------------------------------------------------------------
 // Notion database schema
 // ---------------------------------------------------------------------------
 
 const bookmarksDb = worker.database("bookmarks", {
   type: "managed",
-  initialTitle: "Twitter Bookmarks",
+  initialTitle: "X Bookmarks",
   primaryKeyProperty: "Tweet ID",
   schema: {
     properties: {
@@ -58,6 +63,8 @@ interface SyncState {
   paginationToken?: string;
   /** Whether a paginating cycle is currently in progress. */
   cycleActive?: boolean;
+  /** Bookmarks fetched so far in the in-progress cycle (for the full-load cap). */
+  cycleFetched?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,13 +72,14 @@ interface SyncState {
 // ---------------------------------------------------------------------------
 
 function toChange(tweet: BookmarkTweet) {
-  const type = tweet.isSelfThread ? "Thread" : "Post";
+  const type = tweet.isSelfThread ? "Thread" : tweet.isLongform ? "Article" : "Post";
+  const fallbackEmoji = tweet.isSelfThread ? "🧵" : tweet.isLongform ? "📄" : "🔖";
   return {
     type: "upsert" as const,
     key: tweet.id,
     icon: tweet.authorProfileImageUrl
       ? Builder.imageIcon(tweet.authorProfileImageUrl)
-      : Builder.emojiIcon(tweet.isSelfThread ? "🧵" : "🔖"),
+      : Builder.emojiIcon(fallbackEmoji),
     pageContentMarkdown: buildPageBody(tweet),
     properties: {
       Tweet: Builder.title(summarizeTitle(tweet.text)),
@@ -119,7 +127,7 @@ worker.sync("xBookmarksSync", {
       const refreshToken = state.refreshToken ?? process.env.X_REFRESH_TOKEN;
       if (!refreshToken) {
         throw new Error(
-          "No refresh token available. Bootstrap one with `npm run oauth`, then " +
+          "No refresh token available. Bootstrap one with `pnpm oauth`, then " +
             "set it via: ntn workers env set X_REFRESH_TOKEN=..."
         );
       }
@@ -140,6 +148,7 @@ worker.sync("xBookmarksSync", {
       state.cycleActive = true;
       state.paginationToken = undefined;
       state.cycleNewestId = undefined;
+      state.cycleFetched = 0;
     }
 
     // 4. Fetch one page of bookmarks (newest-bookmarked first).
@@ -153,6 +162,7 @@ worker.sync("xBookmarksSync", {
     if (!state.cycleNewestId && tweets.length > 0) {
       state.cycleNewestId = tweets[0].id;
     }
+    state.cycleFetched = (state.cycleFetched ?? 0) + tweets.length;
 
     // 5. Take tweets until we hit the last-synced marker; everything above is new.
     let reachedKnown = false;
@@ -167,9 +177,10 @@ worker.sync("xBookmarksSync", {
 
     const changes = fresh.map(toChange);
 
-    // 6. Continue paginating within this cycle only if there's more and we
-    //    haven't caught up to what we already have.
-    const hasMore = Boolean(nextToken) && !reachedKnown && tweets.length > 0;
+    // 6. Continue paginating within this cycle only if there's more, we haven't
+    //    caught up to what we already have, and we're under the full-load cap.
+    const underCap = FULL_LOAD_LIMIT <= 0 || (state.cycleFetched ?? 0) < FULL_LOAD_LIMIT;
+    const hasMore = Boolean(nextToken) && !reachedKnown && tweets.length > 0 && underCap;
 
     if (hasMore) {
       return {
@@ -189,6 +200,7 @@ worker.sync("xBookmarksSync", {
         cycleActive: false,
         paginationToken: undefined,
         cycleNewestId: undefined,
+        cycleFetched: undefined,
       },
     };
   },

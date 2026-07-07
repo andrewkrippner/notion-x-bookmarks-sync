@@ -1,8 +1,9 @@
 {
   "name": "notion-x-bookmarks-sync",
   "version": "0.1.0",
-  "description": "Sync your X (Twitter) bookmarks into a Notion database, with author, type, and full tweet text on every page.",
+  "description": "Sync your X bookmarks into a Notion database, with author, type, and full post text on every page.",
   "type": "module",
+  "packageManager": "pnpm@10.18.3",
   "main": "dist/index.js",
   "license": "MIT",
   "author": "Andrew Krippner",
@@ -17,7 +18,6 @@
   "keywords": [
     "notion",
     "x",
-    "twitter",
     "bookmarks",
     "notion-worker",
     "notion-sync"
@@ -26,6 +26,12 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "oauth": "node scripts/x-oauth.mjs",
+    "worker:create": "tsc && ntn workers deploy --name notion-x-bookmarks-sync",
+    "worker:deploy": "tsc && ntn workers deploy",
+    "worker:sync": "ntn workers sync trigger xBookmarksSync",
+    "worker:sync:preview": "ntn workers sync trigger xBookmarksSync --preview",
+    "worker:status": "ntn workers sync status",
+    "worker:reset": "ntn workers sync state reset xBookmarksSync",
     "worktree:setup": "bash worktree-setup.sh",
     "worktree:archive": "bash worktree-archive.sh"
   },

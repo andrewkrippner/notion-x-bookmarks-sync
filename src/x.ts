@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// X (Twitter) API v2 client
+// X API v2 client
 //
 // The bookmarks endpoint (GET /2/users/:id/bookmarks) requires OAuth 2.0
 // user-context auth with the `bookmark.read` scope, and is only available on
@@ -16,6 +16,47 @@ function base64(input: string): string {
   const g = globalThis as { btoa?: (s: string) => string };
   if (typeof g.btoa === "function") return g.btoa(input);
   return Buffer.from(input, "utf8").toString("base64");
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * `fetch` with exponential backoff on transient failures.
+ *
+ * Retries on network errors and 5xx responses (X occasionally returns these);
+ * 4xx responses are terminal and returned immediately so the caller can surface
+ * the real error. Only use this for idempotent GETs — never for the token
+ * refresh, which consumes (and rotates) the refresh token on the server even
+ * when the response looks like a failure.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = 3,
+  baseDelayMs = 500
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.status >= 500 && attempt < retries) {
+        await delay(baseDelayMs * 2 ** attempt);
+        continue;
+      }
+      return res;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries) {
+        await delay(baseDelayMs * 2 ** attempt);
+        continue;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`X request failed after ${retries + 1} attempts: ${url}`);
 }
 
 export interface OAuthClient {
@@ -69,7 +110,7 @@ export async function refreshAccessToken(
 
 /** Look up the authenticated user's numeric id (needed for the bookmarks path). */
 export async function getCurrentUserId(accessToken: string): Promise<string> {
-  const res = await fetch(`${X_API_BASE}/users/me`, {
+  const res = await fetchWithRetry(`${X_API_BASE}/users/me`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) {
@@ -96,6 +137,8 @@ export interface BookmarkTweet {
   url: string;
   /** True when this tweet is a reply to another tweet by the same author (a thread continuation). */
   isSelfThread: boolean;
+  /** True when this is a long-form post (X renders a `note_tweet` body beyond the 280-char limit). */
+  isLongform: boolean;
   /** Photo/preview image URLs attached to the tweet. */
   mediaUrls: string[];
 }
@@ -155,7 +198,7 @@ export async function getBookmarksPage(
   });
   if (paginationToken) params.set("pagination_token", paginationToken);
 
-  const res = await fetch(`${X_API_BASE}/users/${userId}/bookmarks?${params}`, {
+  const res = await fetchWithRetry(`${X_API_BASE}/users/${userId}/bookmarks?${params}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (!res.ok) {
@@ -198,6 +241,7 @@ export async function getBookmarksPage(
       authorProfileImageUrl: author?.profile_image_url,
       url: `https://x.com/${username}/status/${t.id}`,
       isSelfThread,
+      isLongform: Boolean(t.note_tweet?.text),
       mediaUrls,
     };
   });
