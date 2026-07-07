@@ -1,6 +1,6 @@
 # Repository guide for agents
 
-X (Twitter) bookmarks → Notion sync, deployed as a [Notion Worker](https://developers.notion.com/docs/workers). No server, no key rotation — Notion runs the worker on a schedule.
+X bookmarks → Notion sync, deployed as a [Notion Worker](https://developers.notion.com/docs/workers). No server, no key rotation — Notion runs the worker on a schedule.
 
 ## Layout
 
@@ -10,7 +10,7 @@ X (Twitter) bookmarks → Notion sync, deployed as a [Notion Worker](https://dev
 - `scripts/x-oauth.mjs` — one-time local OAuth2 PKCE bootstrap to obtain the initial refresh token.
 - `worktree-setup.sh` / `worktree-archive.sh` — Conductor worktree helpers.
 - `conductor.json` — Conductor workspace config.
-- `.github/` — CI: `npm run check` on push/PR; deploys on push to `master`.
+- `.github/` — CI: `pnpm check` on push/PR; deploys on push to `master`.
 
 No tests in-repo; correctness is enforced by `tsc --noEmit`.
 
@@ -23,20 +23,22 @@ No tests in-repo; correctness is enforced by `tsc --noEmit`.
 ## Commands
 
 ```bash
-npm install
-npm run check     # typecheck — run before committing
-npm run build     # emit dist/
-npm run oauth     # one-time: obtain X refresh token (needs X_CLIENT_ID env)
+pnpm install
+pnpm check     # typecheck — run before committing
+pnpm build     # emit dist/
+pnpm oauth     # one-time: obtain X refresh token (needs X_CLIENT_ID env)
 ```
 
-Deploy / operate (requires `ntn` CLI and a Notion login):
+Deploy / operate (requires `ntn` CLI and a Notion login). These wrap the `ntn`
+commands — see `package.json` scripts:
 
 ```bash
-ntn workers deploy
-ntn workers sync trigger xBookmarksSync --preview   # dry run
-ntn workers sync trigger xBookmarksSync             # real sync
-ntn workers sync status
-ntn workers sync state reset xBookmarksSync         # re-sync from scratch
+pnpm worker:create          # one-time: create the worker (writes workers.json)
+pnpm worker:deploy          # rebuild + redeploy
+pnpm worker:sync:preview    # dry run
+pnpm worker:sync            # real sync
+pnpm worker:status
+pnpm worker:reset           # re-sync from scratch
 ```
 
 Env vars consumed by the worker:
@@ -46,6 +48,8 @@ Env vars consumed by the worker:
   run the worker stores the rotated token in its own sync state and ignores this.
 - `TIMEZONE` (optional, defaults to `America/Los_Angeles`).
 - `SYNC_SCHEDULE` (optional, defaults to `1d`).
+- `X_FULL_LOAD_LIMIT` (optional, defaults to `800`) — caps how many bookmarks the
+  first backlog load walks; set to `0` for the full history.
 
 ## How the sync behaves
 
@@ -54,14 +58,22 @@ Env vars consumed by the worker:
 - **Incremental:** stores the newest-bookmarked tweet id from the last completed
   cycle and stops paginating once it's reached again.
 - **One page per `execute` call:** large backlogs paginate across `hasMore` calls,
-  which keeps each call light and rate-limit friendly.
+  which keeps each call light and rate-limit friendly. The first backlog load is
+  bounded by `X_FULL_LOAD_LIMIT`.
 - **Upsert by tweet id** — re-runs are safe.
-- **Access tier:** the bookmarks endpoint requires at least the X API **Basic** tier.
+- **Resilient fetches:** `users/me` and bookmarks GETs retry transient 5xx /
+  network errors with exponential backoff (`fetchWithRetry` in `src/x.ts`). The
+  token refresh is deliberately *not* retried — X rotates (and invalidates) the
+  refresh token server-side even on a failed-looking response.
+- **Access tier:** the bookmarks endpoint needs OAuth 2.0 user-context auth with
+  `bookmark.read`. As of 2026 X defaults new accounts to **pay-per-use** billing;
+  bookmarks are "owned reads" (~$0.001/resource), so no flat Basic/Pro plan is
+  required — a full 800-bookmark load costs well under a dollar.
 
 When changing sync behavior, preserve these invariants unless the user explicitly asks otherwise.
 
 ## Before opening a PR
 
-1. `npm run check` passes.
+1. `pnpm check` passes.
 2. PR base is `master`.
 3. Keep diffs minimal — this is a small, focused repo.

@@ -1,6 +1,6 @@
 {
     "scripts": {
-        "setup": "bash -lc 'npm run worktree:setup'",
-        "archive": "bash -lc 'npm run worktree:archive'"
+        "setup": "bash -lc 'pnpm worktree:setup'",
+        "archive": "bash -lc 'pnpm worktree:archive'"
     }
 }
