@@ -141,6 +141,12 @@ export interface BookmarkTweet {
   isLongform: boolean;
   /** Photo/preview image URLs attached to the tweet. */
   mediaUrls: string[];
+  /** Public engagement counts (0 when X omits the metric). */
+  likes: number;
+  reposts: number;
+  replies: number;
+  quotes: number;
+  impressions: number;
 }
 
 interface XUser {
@@ -166,6 +172,13 @@ interface XTweet {
   note_tweet?: { text: string };
   referenced_tweets?: { type: string; id: string }[];
   attachments?: { media_keys?: string[] };
+  public_metrics?: {
+    retweet_count?: number;
+    reply_count?: number;
+    like_count?: number;
+    quote_count?: number;
+    impression_count?: number;
+  };
 }
 
 interface BookmarksResponse {
@@ -191,7 +204,7 @@ export async function getBookmarksPage(
 ): Promise<BookmarksPage> {
   const params = new URLSearchParams({
     max_results: "100",
-    "tweet.fields": "created_at,author_id,conversation_id,note_tweet,referenced_tweets,attachments",
+    "tweet.fields": "created_at,author_id,conversation_id,note_tweet,referenced_tweets,attachments,public_metrics",
     expansions: "author_id,attachments.media_keys,referenced_tweets.id,referenced_tweets.id.author_id",
     "user.fields": "name,username,profile_image_url",
     "media.fields": "url,preview_image_url,type",
@@ -243,6 +256,11 @@ export async function getBookmarksPage(
       isSelfThread,
       isLongform: Boolean(t.note_tweet?.text),
       mediaUrls,
+      likes: t.public_metrics?.like_count ?? 0,
+      reposts: t.public_metrics?.retweet_count ?? 0,
+      replies: t.public_metrics?.reply_count ?? 0,
+      quotes: t.public_metrics?.quote_count ?? 0,
+      impressions: t.public_metrics?.impression_count ?? 0,
     };
   });
 
